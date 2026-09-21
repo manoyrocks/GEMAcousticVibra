@@ -1,0 +1,6 @@
+{
+  "name": "Acoustic Vibra",
+  "description": "Vibroacoustic therapy platform with real-time sound frequency generation, cymatics visualization, mood tracking, AI-powered sound recommendations, and wearable integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,352 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-canvas: #020617;
+    --bg-header: rgba(2, 6, 23, 0.85);
+    --bg-surface: #0f172a;
+    --bg-surface-elevated: #1e293b;
+    --bg-card: #0f172a;
+    --border-subtle: #1e293b;
+    --border-active: #06b6d4;
+    --text-heading: #ffffff;
+    --text-body: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-accent: #22d3ee;
+    --accent-solid: #06b6d4;
+    --accent-hover: #0891b2;
+    --accent-ring: rgba(6, 182, 212, 0.3);
+    --scrollbar-track: rgba(15, 23, 42, 0.6);
+    --scrollbar-thumb: rgba(99, 102, 241, 0.4);
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-body);
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-display {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* ==========================================================================
+   THEME DEFINITIONS & CSS VARIABLE OVERRIDES
+   ========================================================================== */
+
+/* 1. Deep Earth (Warm High-Contrast Earth Tones & Terracotta) */
+[data-theme="deep-earth"] {
+  --bg-canvas: #f7f2eb;
+  --bg-header: rgba(247, 242, 235, 0.94);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #eee4d5;
+  --bg-card: #ffffff;
+  --border-subtle: #d8c8b4;
+  --border-active: #c25928;
+  --text-heading: #1b120c;
+  --text-body: #2c1e14;
+  --text-muted: #5c4434;
+  --text-accent: #c25928;
+  --accent-solid: #c25928;
+  --accent-hover: #a3441a;
+  --accent-ring: rgba(194, 89, 40, 0.25);
+  --scrollbar-track: #eee4d5;
+  --scrollbar-thumb: #c25928;
+}
+
+/* 2. Very Light (Crisp Minimalist Arctic Snow) */
+[data-theme="very-light"] {
+  --bg-canvas: #f8fafc;
+  --bg-header: rgba(248, 250, 252, 0.94);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f1f5f9;
+  --bg-card: #ffffff;
+  --border-subtle: #e2e8f0;
+  --border-active: #0284c7;
+  --text-heading: #0f172a;
+  --text-body: #1e293b;
+  --text-muted: #64748b;
+  --text-accent: #0284c7;
+  --accent-solid: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-ring: rgba(2, 132, 199, 0.25);
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #94a3b8;
+}
+
+/* 3. Light Green (Soothing Botanical Eucalyptus & Matcha) */
+[data-theme="light-green"] {
+  --bg-canvas: #f2f7f2;
+  --bg-header: rgba(242, 247, 242, 0.94);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #e5efe5;
+  --bg-card: #ffffff;
+  --border-subtle: #cbe0cb;
+  --border-active: #059669;
+  --text-heading: #0f2916;
+  --text-body: #1c3b24;
+  --text-muted: #3d6346;
+  --text-accent: #059669;
+  --accent-solid: #059669;
+  --accent-hover: #047857;
+  --accent-ring: rgba(5, 150, 105, 0.25);
+  --scrollbar-track: #e5efe5;
+  --scrollbar-thumb: #059669;
+}
+
+/* 4. Pinkish (Rose Quartz & Warm Blush) */
+[data-theme="pinkish"] {
+  --bg-canvas: #faf4f6;
+  --bg-header: rgba(250, 244, 246, 0.94);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #f5e6ec;
+  --bg-card: #ffffff;
+  --border-subtle: #ead4de;
+  --border-active: #db2777;
+  --text-heading: #2d1220;
+  --text-body: #4a1e35;
+  --text-muted: #753b58;
+  --text-accent: #db2777;
+  --accent-solid: #db2777;
+  --accent-hover: #be185d;
+  --accent-ring: rgba(219, 39, 119, 0.25);
+  --scrollbar-track: #f5e6ec;
+  --scrollbar-thumb: #db2777;
+}
+
+/* 5. Autism Mode / Sensory Calm (Anti-Glare Matte Periwinkle Slate, Low Visual Noise) */
+[data-theme="autism-calm"] {
+  --bg-canvas: #eef2f6;
+  --bg-header: rgba(238, 242, 246, 0.94);
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #e2e8f0;
+  --bg-card: #ffffff;
+  --border-subtle: #c8d7e6;
+  --border-active: #6366f1;
+  --text-heading: #1e293b;
+  --text-body: #334155;
+  --text-muted: #64748b;
+  --text-accent: #4f46e5;
+  --accent-solid: #6366f1;
+  --accent-hover: #4f46e5;
+  --accent-ring: rgba(99, 102, 241, 0.25);
+  --scrollbar-track: #e2e8f0;
+  --scrollbar-thumb: #6366f1;
+}
+
+/* Sensory calm mode anti-strain adjustments */
+.sensory-calm-active * {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.15s !important;
+}
+
+/* ==========================================================================
+   GLOBAL COMPONENT THEMING CASCADE
+   ========================================================================== */
+
+/* Universal light theme cascade for all light/accessible themes */
+[data-theme="deep-earth"],
+[data-theme="very-light"],
+[data-theme="light-green"],
+[data-theme="pinkish"],
+[data-theme="autism-calm"] {
+  color-scheme: light;
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-body);
+  }
+
+  /* Root canvas & wrappers */
+  .bg-slate-950,
+  .bg-slate-900\/50,
+  .bg-slate-950\/80,
+  .bg-slate-950\/90 {
+    background-color: var(--bg-canvas) !important;
+  }
+
+  header {
+    background-color: var(--bg-header) !important;
+    border-color: var(--border-subtle) !important;
+  }
+
+  /* Cards, panels, dropdowns, and surfaces */
+  .bg-slate-900,
+  .bg-slate-900\/70,
+  .bg-slate-900\/80,
+  .bg-slate-900\/90,
+  .bg-slate-950\/70,
+  .bg-slate-950\/80,
+  .bg-slate-950\/95 {
+    background-color: var(--bg-surface) !important;
+  }
+
+  .bg-slate-800,
+  .bg-slate-800\/60,
+  .bg-slate-800\/80 {
+    background-color: var(--bg-surface-elevated) !important;
+  }
+
+  /* Borders */
+  .border-slate-800,
+  .border-slate-800\/80,
+  .border-slate-800\/90,
+  .border-slate-700,
+  .border-slate-700\/80 {
+    border-color: var(--border-subtle) !important;
+  }
+
+  /* Typography */
+  .text-white {
+    color: var(--text-heading) !important;
+  }
+
+  .text-slate-100,
+  .text-slate-200 {
+    color: var(--text-body) !important;
+  }
+
+  .text-slate-300,
+  .text-slate-400 {
+    color: var(--text-muted) !important;
+  }
+
+  .text-slate-500 {
+    opacity: 0.85;
+    color: var(--text-muted) !important;
+  }
+
+  /* Form inputs & range sliders */
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    background-color: var(--bg-surface) !important;
+    border-color: var(--border-subtle) !important;
+    color: var(--text-body) !important;
+  }
+
+  input[type="range"] {
+    background-color: var(--bg-surface-elevated) !important;
+  }
+
+  /* Accent highlights */
+  .text-cyan-400,
+  .text-cyan-300,
+  .text-indigo-400,
+  .text-indigo-300 {
+    color: var(--text-accent) !important;
+  }
+
+  .border-cyan-500,
+  .border-cyan-500\/40,
+  .border-cyan-500\/30 {
+    border-color: var(--border-active) !important;
+  }
+
+  .bg-cyan-500,
+  .bg-cyan-600 {
+    background-color: var(--accent-solid) !important;
+    color: #ffffff !important;
+  }
+
+  .hover\:bg-cyan-400:hover,
+  .hover\:bg-cyan-500:hover {
+    background-color: var(--accent-hover) !important;
+  }
+
+  .bg-cyan-500\/10,
+  .bg-cyan-500\/15,
+  .bg-cyan-500\/20,
+  .bg-indigo-500\/15,
+  .bg-indigo-500\/20,
+  .bg-indigo-600\/30 {
+    background-color: var(--accent-ring) !important;
+    color: var(--text-accent) !important;
+  }
+
+  /* Hero banners and gradients */
+  .from-slate-900 {
+    --tw-gradient-from: var(--bg-surface-elevated) var(--tw-gradient-from-position) !important;
+  }
+  .to-slate-900 {
+    --tw-gradient-to: var(--bg-surface-elevated) var(--tw-gradient-to-position) !important;
+  }
+  .via-cyan-950\/40 {
+    --tw-gradient-stops: var(--tw-gradient-from), var(--bg-surface) 50%, var(--tw-gradient-to) !important;
+  }
+}
+
+/* Specific theme refinements */
+[data-theme="deep-earth"] input[type="range"] {
+  accent-color: #c25928 !important;
+}
+
+[data-theme="very-light"] input[type="range"] {
+  accent-color: #0284c7 !important;
+}
+
+[data-theme="light-green"] input[type="range"] {
+  accent-color: #059669 !important;
+}
+
+[data-theme="pinkish"] input[type="range"] {
+  accent-color: #db2777 !important;
+}
+
+[data-theme="autism-calm"] input[type="range"] {
+  accent-color: #6366f1 !important;
+}
+
+/* Animations */
+@keyframes subtle-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes wave-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-subtle-pulse {
+  animation: subtle-pulse 4s ease-in-out infinite;
+}
+
+.animate-wave-flow {
+  background-size: 200% 200%;
+  animation: wave-flow 8s ease infinite;
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  filter: brightness(1.2);
+}
