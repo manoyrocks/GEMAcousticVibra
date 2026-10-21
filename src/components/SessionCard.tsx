@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { VibroSession, SessionPhase } from '../types';
 import { soundEngine } from '../services/soundEngine';
+import { storage } from '../services/storage';
 import {
   Play,
   Clock,
@@ -12,12 +13,15 @@ import {
   Activity,
   Zap,
   CheckCircle2,
-  Maximize2
+  Maximize2,
+  Heart
 } from 'lucide-react';
 
 interface Props {
   session: VibroSession;
   isPreviewing: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: (sessionId: string) => void;
   onTogglePreview: (sessionId: string | null) => void;
   onInitiateSession: (session: VibroSession) => void;
 }
@@ -25,15 +29,56 @@ interface Props {
 export const SessionCard: React.FC<Props> = ({
   session,
   isPreviewing,
+  isFavorite: propIsFavorite,
+  onToggleFavorite,
   onTogglePreview,
   onInitiateSession
 }) => {
+  const [internalIsFavorite, setInternalIsFavorite] = useState<boolean>(() =>
+    typeof propIsFavorite === 'boolean' ? propIsFavorite : storage.isFavoriteSession(session.id)
+  );
   const [previewRemainingMs, setPreviewRemainingMs] = useState<number>(5000);
   const [hasCompletedPreview, setHasCompletedPreview] = useState<boolean>(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const phaseRef = useRef<number>(0);
   const startTimeRef = useRef<number>(0);
+
+  // Keep internal favorite state in sync with prop and storage events
+  useEffect(() => {
+    if (typeof propIsFavorite === 'boolean') {
+      setInternalIsFavorite(propIsFavorite);
+    }
+  }, [propIsFavorite]);
+
+  useEffect(() => {
+    const handleFavoritesUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<string[]>;
+      if (customEvent.detail && Array.isArray(customEvent.detail)) {
+        setInternalIsFavorite(customEvent.detail.includes(session.id));
+      } else {
+        setInternalIsFavorite(storage.isFavoriteSession(session.id));
+      }
+    };
+
+    window.addEventListener('acoustic_vibra_favorites_updated', handleFavoritesUpdated);
+    return () => {
+      window.removeEventListener('acoustic_vibra_favorites_updated', handleFavoritesUpdated);
+    };
+  }, [session.id]);
+
+  const isFavorited = typeof propIsFavorite === 'boolean' ? propIsFavorite : internalIsFavorite;
+
+  const handleToggleFavorite = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (onToggleFavorite) {
+      onToggleFavorite(session.id);
+    } else {
+      const updated = storage.toggleFavoriteSession(session.id);
+      setInternalIsFavorite(updated.includes(session.id));
+    }
+  };
 
   const primaryPhase: SessionPhase = session.phases[0] || {
     id: 'p1',
@@ -250,13 +295,33 @@ export const SessionCard: React.FC<Props> = ({
 
       {/* Top Section */}
       <div className="relative z-10">
-        {/* Top Row: Category, Duration & Quick Preview Button */}
+        {/* Top Row: Category, Duration, Quick Preview & Bookmark Heart Button */}
         <div className="flex items-center justify-between mb-3 gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/60">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 px-2.5 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/60 truncate max-w-[130px] sm:max-w-none">
             {session.category}
           </span>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1.5 sm:space-x-2 flex-shrink-0">
+            {/* Bookmark Heart Button */}
+            <button
+              type="button"
+              onClick={handleToggleFavorite}
+              id={`bookmark-btn-${session.id}`}
+              className={`p-1.5 rounded-full transition-all duration-300 border flex items-center justify-center ${
+                isFavorited
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/50 shadow-sm shadow-rose-500/20 hover:bg-rose-500/30 hover:scale-110'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-rose-400 hover:bg-rose-950/30 border-slate-700/80 hover:border-rose-500/40 hover:scale-105 opacity-80 group-hover:opacity-100'
+              }`}
+              title={isFavorited ? 'Remove from Favorites' : 'Bookmark to Favorites'}
+              aria-label={isFavorited ? 'Remove from Favorites' : 'Bookmark to Favorites'}
+            >
+              <Heart
+                className={`w-3.5 h-3.5 transition-all duration-200 ${
+                  isFavorited ? 'fill-rose-500 text-rose-500 scale-105' : 'text-slate-400 hover:text-rose-400'
+                }`}
+              />
+            </button>
+
             {/* Subtle Hover-Revealed Preview Button */}
             <button
               type="button"

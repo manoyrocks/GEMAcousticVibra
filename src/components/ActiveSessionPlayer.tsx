@@ -49,6 +49,7 @@ export const ActiveSessionPlayer: React.FC<Props> = ({
   );
 
   // Audio Mixer State
+  const [masterVolume, setMasterVolume] = useState<number>(() => soundEngine.getMasterVolume());
   const [toneVolume, setToneVolume] = useState(75);
   const [ambientSound, setAmbientSound] = useState<AmbientSoundType>(
     session.phases[0]?.ambientSound || 'none'
@@ -65,6 +66,13 @@ export const ActiveSessionPlayer: React.FC<Props> = ({
   const [breathingGuideActive, setBreathingGuideActive] = useState(true);
   const [soundscapeDrawerOpen, setSoundscapeDrawerOpen] = useState(false);
 
+  // Subscribe to master volume changes from soundEngine
+  useEffect(() => {
+    return soundEngine.subscribeMasterVolume(vol => {
+      setMasterVolume(vol);
+    });
+  }, []);
+
   // Wearables Live State
   const [wearable, setWearable] = useState<WearableData>(() =>
     storage.getWearableData()
@@ -77,6 +85,25 @@ export const ActiveSessionPlayer: React.FC<Props> = ({
     (acc, p) => acc + p.durationSeconds,
     0
   );
+
+  // Compute real-time audio intensity (0.0 to 1.0) reflecting master, tone, ambient, and sleep fade levels
+  const sleepFadeRatio = (() => {
+    if (!session.isSleepSession) return 1;
+    const remainingTotalSeconds = Math.max(0, totalSessionSeconds - elapsedTotalSeconds);
+    const fadeDurationSeconds = (session.fadeOutMinutes || 15) * 60;
+    if (remainingTotalSeconds <= fadeDurationSeconds) {
+      return Math.max(0, remainingTotalSeconds / fadeDurationSeconds);
+    }
+    return 1;
+  })();
+
+  const effectiveMasterRatio = Math.min(1, masterVolume / 80);
+  const effectiveToneRatio = (toneVolume / 100) * sleepFadeRatio;
+  const effectiveAmbientRatio =
+    ambientSound !== 'none' ? (ambientVolume / 100) * sleepFadeRatio : 0;
+  const audioIntensity = isPlaying
+    ? Math.min(1, (effectiveToneRatio * 0.8 + effectiveAmbientRatio * 0.35) * effectiveMasterRatio)
+    : 0.1;
 
   // Start sound when phase changes or play state updates
   useEffect(() => {
@@ -286,6 +313,7 @@ export const ActiveSessionPlayer: React.FC<Props> = ({
             frequency={currentPhase.frequencyHz}
             secondaryFrequency={currentPhase.binauralBeatHz ? currentPhase.frequencyHz + currentPhase.binauralBeatHz : undefined}
             isPlaying={isPlaying}
+            intensity={audioIntensity}
             breathingGuide={breathingGuideActive}
             className="w-full h-[380px] md:h-[440px]"
           />

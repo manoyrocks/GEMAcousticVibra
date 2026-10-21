@@ -72,15 +72,44 @@ export default function App() {
     storage.getCustomSessions()
   );
 
+  // Favorite session IDs saved in local storage
+  const [favoriteSessionIds, setFavoriteSessionIds] = useState<string[]>(() =>
+    storage.getFavoriteSessionIds()
+  );
+
   // Search & Filter in Explore
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [previewingSessionId, setPreviewingSessionId] = useState<string | null>(null);
+  const [masterVolume, setMasterVolume] = useState<number>(() => soundEngine.getMasterVolume());
+
+  useEffect(() => {
+    return soundEngine.subscribeMasterVolume(vol => {
+      setMasterVolume(vol);
+    });
+  }, []);
+
+  // Listen for favorite updates across components
+  useEffect(() => {
+    const handleFavoritesUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<string[]>;
+      if (customEvent.detail && Array.isArray(customEvent.detail)) {
+        setFavoriteSessionIds(customEvent.detail);
+      } else {
+        setFavoriteSessionIds(storage.getFavoriteSessionIds());
+      }
+    };
+    window.addEventListener('acoustic_vibra_favorites_updated', handleFavoritesUpdated);
+    return () => {
+      window.removeEventListener('acoustic_vibra_favorites_updated', handleFavoritesUpdated);
+    };
+  }, []);
 
   // Filtered preset & custom sessions
   const allSessions = [...customSessions, ...PRESET_SESSIONS];
   const filteredSessions = allSessions.filter(s => {
     if (selectedCategory === 'all') return true;
+    if (selectedCategory === 'favorites') return favoriteSessionIds.includes(s.id);
     if (selectedCategory === 'custom') return s.isCustom;
     return s.category.toLowerCase().includes(selectedCategory.toLowerCase());
   });
@@ -395,6 +424,7 @@ export default function App() {
                     frequency={432}
                     secondaryFrequency={442}
                     isPlaying={true}
+                    intensity={Math.min(1, masterVolume / 80)}
                     compact={true}
                     showControls={false}
                     className="w-full h-64 shadow-xl"
@@ -427,6 +457,7 @@ export default function App() {
               <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
                 {[
                   { id: 'all', label: 'All Protocols' },
+                  { id: 'favorites', label: `♥ Favorites (${favoriteSessionIds.length})` },
                   { id: 'pain', label: 'Pain Relief & Somatic' },
                   { id: 'stress', label: 'Stress & Anxiety' },
                   { id: 'sleep', label: 'Sleep & Delta Waves' },
@@ -440,7 +471,9 @@ export default function App() {
                     onClick={() => setSelectedCategory(c.id)}
                     className={`whitespace-nowrap px-4 py-2 rounded-xl text-xs font-medium border transition ${
                       selectedCategory === c.id
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
+                        ? c.id === 'favorites'
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-950/40'
+                          : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50'
                         : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200'
                     }`}
                   >
@@ -449,12 +482,42 @@ export default function App() {
                 ))}
               </div>
 
+              {/* Empty state for empty filtered list / favorites */}
+              {filteredSessions.length === 0 && (
+                <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center space-y-3 my-4">
+                  <div className="w-12 h-12 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto">
+                    <Heart className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-white">
+                    {selectedCategory === 'favorites' ? 'No Bookmarked Favorites Yet' : 'No Protocols Found'}
+                  </h3>
+                  <p className="text-xs text-slate-400 max-w-md mx-auto">
+                    {selectedCategory === 'favorites'
+                      ? 'Tap the heart bookmark icon on any session card to save your favorite clinical protocols for quick access.'
+                      : 'No protocols match your selected category filter.'}
+                  </p>
+                  {selectedCategory === 'favorites' && (
+                    <button
+                      onClick={() => setSelectedCategory('all')}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold border border-slate-700 transition"
+                    >
+                      Browse All Protocols
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Sessions Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredSessions.map(session => (
                   <SessionCard
                     key={session.id}
                     session={session}
+                    isFavorite={favoriteSessionIds.includes(session.id)}
+                    onToggleFavorite={(id) => {
+                      const updated = storage.toggleFavoriteSession(id);
+                      setFavoriteSessionIds(updated);
+                    }}
                     isPreviewing={previewingSessionId === session.id}
                     onTogglePreview={setPreviewingSessionId}
                     onInitiateSession={handleInitiateSession}

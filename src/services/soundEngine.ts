@@ -27,6 +27,12 @@ class SoundEngine {
   private ambientGain: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
 
+  // Volume Normalization & Therapeutic AGC Nodes
+  private normalizerCompressor: DynamicsCompressorNode | null = null;
+  private normalizerGain: GainNode | null = null;
+  private isNormalizationEnabled: boolean = true;
+  private normalizationListeners: Set<(enabled: boolean) => void> = new Set();
+
   // Active oscillators & nodes for main tone
   private oscLeft: OscillatorNode | null = null;
   private oscRight: OscillatorNode | null = null;
@@ -51,20 +57,22 @@ class SoundEngine {
     hapticIntensity: 50
   };
 
-  // Master volume state (default 70%)
-  private masterVolume: number = 70;
-  private preMuteVolume: number = 70;
+  // Master volume state (default 33%)
+  private masterVolume: number = 33;
+  private preMuteVolume: number = 33;
   private masterVolumeListeners: Set<(volume: number) => void> = new Set();
 
   constructor() {
-    // Read persisted volume if available, defaulting to 70%
+    // Read persisted volume and normalization settings
     if (typeof window !== 'undefined') {
       try {
         this.masterVolume = storage.getMasterVolume();
-        this.preMuteVolume = this.masterVolume > 0 ? this.masterVolume : 70;
+        this.preMuteVolume = this.masterVolume > 0 ? this.masterVolume : 33;
+        this.isNormalizationEnabled = storage.getVolumeNormalization();
       } catch {
-        this.masterVolume = 70;
-        this.preMuteVolume = 70;
+        this.masterVolume = 33;
+        this.preMuteVolume = 33;
+        this.isNormalizationEnabled = true;
       }
     }
   }
@@ -74,10 +82,29 @@ class SoundEngine {
       const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AudioContextClass();
 
-      // Master output node calibrated to masterVolume (default 70% = 0.70 gain)
+      // Master output node calibrated to masterVolume
       this.masterGain = this.ctx.createGain();
-      const initialGain = Math.max(0, Math.min(1, this.masterVolume / 100));
+      const initialGain = Math.max(0, Math.min(0.80, this.masterVolume / 100));
       this.masterGain.gain.setValueAtTime(initialGain, this.ctx.currentTime);
+
+      // Therapeutic Dynamic Normalizer / Auto-Leveler Compressor
+      // Prevents abrupt loudness jumps across disparate protocols, Solfeggio steps, & ambient layers
+      this.normalizerCompressor = this.ctx.createDynamicsCompressor();
+      if (this.isNormalizationEnabled) {
+        this.normalizerCompressor.threshold.setValueAtTime(-22, this.ctx.currentTime);
+        this.normalizerCompressor.knee.setValueAtTime(24, this.ctx.currentTime);
+        this.normalizerCompressor.ratio.setValueAtTime(4.0, this.ctx.currentTime);
+      } else {
+        this.normalizerCompressor.threshold.setValueAtTime(0, this.ctx.currentTime);
+        this.normalizerCompressor.knee.setValueAtTime(0, this.ctx.currentTime);
+        this.normalizerCompressor.ratio.setValueAtTime(1.0, this.ctx.currentTime);
+      }
+      this.normalizerCompressor.attack.setValueAtTime(0.003, this.ctx.currentTime); // 3ms fast transient catcher
+      this.normalizerCompressor.release.setValueAtTime(0.250, this.ctx.currentTime); // 250ms smooth release
+
+      // Normalizer stage post-gain
+      this.normalizerGain = this.ctx.createGain();
+      this.normalizerGain.gain.setValueAtTime(1.0, this.ctx.currentTime);
 
       // Analyser for real-time Cymatics & FFT
       this.analyser = this.ctx.createAnalyser();
@@ -92,9 +119,12 @@ class SoundEngine {
       this.ambientGain = this.ctx.createGain();
       this.ambientGain.gain.setValueAtTime(0.3, this.ctx.currentTime);
 
-      // Routing
-      this.toneGain.connect(this.masterGain);
-      this.ambientGain.connect(this.masterGain);
+      // Audio Graph Routing:
+      // Tone + Ambient -> Normalizer Compressor (AGC) -> Normalizer Gain -> Master Gain -> Analyser -> Destination
+      this.toneGain.connect(this.normalizerCompressor);
+      this.ambientGain.connect(this.normalizerCompressor);
+      this.normalizerCompressor.connect(this.normalizerGain);
+      this.normalizerGain.connect(this.masterGain);
       this.masterGain.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
     }
@@ -123,7 +153,108 @@ class SoundEngine {
   }
 
   /**
-   * Start generating vibroacoustic frequencies
+   * Computes real-time audio output intensity (0.0 to 1.0) from the Web Audio AnalyserNode
+   * combined with the active master, tone, and ambient channel gain stages.
+   */
+  public getOutputIntensity(): number {
+    if (!this.isPlaying || this.masterVolume <= 0) {
+      return 0;
+    }
+
+    const masterFactor = Math.min(1, this.masterVolume / 80); // 80% is max calibrated master volume
+    const toneVol = (this.currentOptions.volume ?? 75) / 100;
+    const ambVol =
+      this.currentOptions.ambientSound && this.currentOptions.ambientSound !== 'none'
+        ? (this.currentOptions.ambientVolume ?? 30) / 100
+        : 0;
+    const configuredGain = Math.min(1, (toneVol * 0.8 + ambVol * 0.35) * masterFactor);
+
+    if (this.analyser) {
+      const bufferLength = this.analyser.frequencyBinCount;
+      const timeData = new Uint8Array(bufferLength);
+      this.analyser.getByteTimeDomainData(timeData);
+
+      // Compute RMS amplitude from time-domain waveform
+      let sumSquares = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const normalized = (timeData[i] - 128) / 128;
+        sumSquares += normalized * normalized;
+      }
+      const rms = Math.sqrt(sumSquares / bufferLength);
+      // Scale RMS (typically 0.05 - 0.5 for pure/harmonic tones) and blend with configured volume
+      const rmsIntensity = Math.min(1, rms * 2.4);
+      return Math.max(0.05, Math.min(1, rmsIntensity * 0.65 + configuredGain * 0.35));
+    }
+
+    return Math.max(0.05, configuredGain);
+  }
+
+  /**
+   * Psychoacoustic Equal-Loudness & Energy Balancing Algorithm (ISO 226 Contour Model)
+   * Automatically normalizes the perceived acoustic volume across disparate frequencies (e.g. 40Hz bass vs 963Hz high Solfeggio),
+   * dense harmonic stacks, binaural pairs, and multi-layered ambient soundscapes.
+   * Prevents abrupt, jarring audio jumps when switching between therapeutic protocols.
+   */
+  public calculateNormalizedGain(options: PlaybackOptions): number {
+    const rawVolume = (options.volume !== undefined ? options.volume : 75) / 100;
+    if (!this.isNormalizationEnabled) {
+      return Math.max(0.001, Math.min(1.0, rawVolume));
+    }
+
+    const freq = Math.max(1, options.frequency);
+    const waveform = options.waveform || 'sine';
+
+    // 1. Equal-Loudness Frequency Weighting
+    // The human ear is significantly more sensitive around 1kHz - 3.5kHz (auditory canal resonance)
+    // and far less sensitive to deep bass (20Hz - 80Hz).
+    let freqWeight = 1.0;
+    if (freq < 55) {
+      // Infrasonic / Somatic Bass (e.g. 40Hz Gamma, 52.8Hz) - modest presence boost
+      freqWeight = 1.15;
+    } else if (freq < 150) {
+      freqWeight = 1.05;
+    } else if (freq >= 150 && freq <= 350) {
+      freqWeight = 0.98;
+    } else if (freq > 350 && freq <= 650) {
+      // 432Hz, 528Hz Solfeggio range
+      freqWeight = 0.86;
+    } else if (freq > 650 && freq <= 1200) {
+      // 741Hz, 852Hz, 963Hz Solfeggio range (piercing without normalization)
+      freqWeight = 0.78;
+    } else if (freq > 1200 && freq <= 3500) {
+      // Peak resonance
+      freqWeight = 0.72;
+    } else {
+      freqWeight = 0.70;
+    }
+
+    // 2. Waveform Spectral Density Weighting
+    // Harmonic stacks and multiple oscillators sum acoustic energy; normalize to prevent clipping
+    let waveformWeight = 1.0;
+    if (waveform === 'harmonic') {
+      waveformWeight = 0.72; // Sums 4+ overtone oscillators
+    } else if (waveform === 'triangle') {
+      waveformWeight = 0.92; // Rich odd harmonics
+    } else if (waveform === 'binaural') {
+      waveformWeight = 0.88; // Dual stereo oscillators
+    } else if (waveform === 'isochronic') {
+      waveformWeight = 0.86; // LFO square/sine modulation peaks
+    }
+
+    // 3. Multi-layer Ambient Headroom Compensation
+    let ambientHeadroom = 1.0;
+    if (options.ambientSound && options.ambientSound !== 'none') {
+      const ambVol = (options.ambientVolume ?? 30) / 100;
+      ambientHeadroom = Math.max(0.75, 1.0 - (ambVol * 0.16));
+    }
+
+    const normalizedGain = rawVolume * freqWeight * waveformWeight * ambientHeadroom;
+    // Cap strictly to 0.85 to maintain dynamic headroom
+    return Math.max(0.001, Math.min(0.85, normalizedGain));
+  }
+
+  /**
+   * Start generating vibroacoustic frequencies with smooth auto-leveling
    */
   public play(options: PlaybackOptions) {
     const ctx = this.initContext();
@@ -133,12 +264,13 @@ class SoundEngine {
 
     const now = ctx.currentTime;
     const freq = Math.max(1, options.frequency);
-    const targetVolume = (options.volume !== undefined ? options.volume : 75) / 100;
+    const targetVolume = this.calculateNormalizedGain(options);
     
     if (this.toneGain) {
       this.toneGain.gain.cancelScheduledValues(now);
       this.toneGain.gain.setValueAtTime(0.0001, now);
-      this.toneGain.gain.linearRampToValueAtTime(targetVolume, now + 0.15);
+      // Gentle 200ms exponential-like linear rise to prevent click/burst transients
+      this.toneGain.gain.linearRampToValueAtTime(targetVolume, now + 0.20);
     }
 
     const waveformType = options.waveform || 'sine';
@@ -395,7 +527,7 @@ class SoundEngine {
   }
 
   public setMasterVolume(volumePercent: number) {
-    const clamped = Math.max(0, Math.min(100, Math.round(volumePercent)));
+    const clamped = Math.max(0, Math.min(80, Math.round(volumePercent)));
     this.masterVolume = clamped;
     if (clamped > 0) {
       this.preMuteVolume = clamped;
@@ -424,7 +556,7 @@ class SoundEngine {
       this.setMasterVolume(0);
       return 0;
     } else {
-      const restored = this.preMuteVolume > 0 ? this.preMuteVolume : 70;
+      const restored = this.preMuteVolume > 0 ? this.preMuteVolume : 33;
       this.setMasterVolume(restored);
       return restored;
     }
@@ -441,9 +573,64 @@ class SoundEngine {
   public setToneVolume(volumePercent: number) {
     this.currentOptions.volume = volumePercent;
     if (this.ctx && this.toneGain) {
-      const target = (volumePercent / 100);
+      const target = this.calculateNormalizedGain(this.currentOptions);
       this.toneGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
     }
+  }
+
+  /**
+   * Volume Normalization Controls & Telemetry
+   */
+  public getIsNormalizationEnabled(): boolean {
+    return this.isNormalizationEnabled;
+  }
+
+  public setNormalizationEnabled(enabled: boolean) {
+    this.isNormalizationEnabled = enabled;
+    try {
+      storage.saveVolumeNormalization(enabled);
+    } catch { /* noop */ }
+
+    if (this.ctx && this.normalizerCompressor) {
+      const now = this.ctx.currentTime;
+      if (enabled) {
+        this.normalizerCompressor.threshold.setTargetAtTime(-22, now, 0.05);
+        this.normalizerCompressor.knee.setTargetAtTime(24, now, 0.05);
+        this.normalizerCompressor.ratio.setTargetAtTime(4.0, now, 0.05);
+      } else {
+        this.normalizerCompressor.threshold.setTargetAtTime(0, now, 0.05);
+        this.normalizerCompressor.knee.setTargetAtTime(0, now, 0.05);
+        this.normalizerCompressor.ratio.setTargetAtTime(1.0, now, 0.05);
+      }
+    }
+
+    // Re-adjust active tone level
+    if (this.isPlaying && this.ctx && this.toneGain) {
+      const target = this.calculateNormalizedGain(this.currentOptions);
+      this.toneGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+    }
+
+    // Notify listeners
+    this.normalizationListeners.forEach(listener => {
+      try {
+        listener(enabled);
+      } catch { /* noop */ }
+    });
+  }
+
+  public subscribeNormalization(callback: (enabled: boolean) => void): () => void {
+    this.normalizationListeners.add(callback);
+    callback(this.isNormalizationEnabled);
+    return () => {
+      this.normalizationListeners.delete(callback);
+    };
+  }
+
+  public getGainReduction(): number {
+    if (this.normalizerCompressor) {
+      return this.normalizerCompressor.reduction;
+    }
+    return 0;
   }
 
   public setAmbientVolume(volumePercent: number) {

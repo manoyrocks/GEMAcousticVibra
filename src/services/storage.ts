@@ -15,12 +15,14 @@ const STORAGE_KEYS = {
   MOOD_LOGS: 'acoustic_vibra_mood_logs',
   CUSTOM_SESSIONS: 'acoustic_vibra_custom_sessions',
   SAVED_FREQUENCIES: 'acoustic_vibra_saved_freqs',
+  FAVORITE_SESSIONS: 'acoustic_vibra_favorite_sessions',
   COMMUNITY_POSTS: 'acoustic_vibra_community_posts',
   WEARABLE_DATA: 'acoustic_vibra_wearable_data',
   USER_PREFERENCES: 'acoustic_vibra_user_prefs',
   HARDWARE_PROFILE: 'acoustic_vibra_hardware_profile',
   ADMIN_SETTINGS: 'acoustic_vibra_admin_settings',
-  ADMIN_PROFILES: 'acoustic_vibra_admin_profiles'
+  ADMIN_PROFILES: 'acoustic_vibra_admin_profiles',
+  VOLUME_NORMALIZATION: 'acoustic_vibra_volume_normalization'
 };
 
 const INITIAL_MOOD_LOGS: MoodLog[] = [
@@ -213,6 +215,48 @@ export const storage = {
     return [...PRESET_SESSIONS, ...custom];
   },
 
+  getFavoriteSessionIds(): string[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.FAVORITE_SESSIONS);
+      if (data) {
+        return JSON.parse(data);
+      }
+      // Initial default favorites
+      const initialFavorites = ['session-cellular-pain', 'session-anxiety-dissolution'];
+      localStorage.setItem(STORAGE_KEYS.FAVORITE_SESSIONS, JSON.stringify(initialFavorites));
+      return initialFavorites;
+    } catch {
+      return ['session-cellular-pain', 'session-anxiety-dissolution'];
+    }
+  },
+
+  saveFavoriteSessionIds(ids: string[]): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.FAVORITE_SESSIONS, JSON.stringify(ids));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('acoustic_vibra_favorites_updated', { detail: ids }));
+      }
+    } catch { /* noop */ }
+  },
+
+  toggleFavoriteSession(sessionId: string): string[] {
+    const favorites = this.getFavoriteSessionIds();
+    const index = favorites.indexOf(sessionId);
+    let updated: string[];
+    if (index >= 0) {
+      updated = favorites.filter(id => id !== sessionId);
+    } else {
+      updated = [sessionId, ...favorites];
+    }
+    this.saveFavoriteSessionIds(updated);
+    return updated;
+  },
+
+  isFavoriteSession(sessionId: string): boolean {
+    const favorites = this.getFavoriteSessionIds();
+    return favorites.includes(sessionId);
+  },
+
   getSavedFrequencyIds(): string[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SAVED_FREQUENCIES);
@@ -321,16 +365,36 @@ export const storage = {
       const val = localStorage.getItem('acoustic_vibra_master_volume');
       if (val !== null) {
         const num = Number(val);
-        if (!isNaN(num) && num >= 0 && num <= 100) return num;
+        if (!isNaN(num) && num >= 0 && num <= 80) return num;
+        if (!isNaN(num) && num > 80) return 80;
       }
     } catch { /* noop */ }
-    return 70; // Default master volume is strictly 70%
+    return 33; // Default master volume is 33%
   },
 
   saveMasterVolume(vol: number): void {
     try {
-      const clamped = Math.max(0, Math.min(100, Math.round(vol)));
+      const clamped = Math.max(0, Math.min(80, Math.round(vol)));
       localStorage.setItem('acoustic_vibra_master_volume', clamped.toString());
+    } catch { /* noop */ }
+  },
+
+  getVolumeNormalization(): boolean {
+    try {
+      const val = localStorage.getItem(STORAGE_KEYS.VOLUME_NORMALIZATION);
+      if (val !== null) {
+        return val === 'true';
+      }
+    } catch { /* noop */ }
+    return true; // Default to enabled for safe and balanced therapeutic listening
+  },
+
+  saveVolumeNormalization(enabled: boolean): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.VOLUME_NORMALIZATION, enabled ? 'true' : 'false');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('acoustic_vibra_normalization_updated', { detail: enabled }));
+      }
     } catch { /* noop */ }
   },
 
